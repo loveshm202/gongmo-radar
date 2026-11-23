@@ -213,7 +213,8 @@ function rolling(d){
   const n=d.note||"";
   if(/예산/.test(n))return{check:false,label:"예산 소진 시",text:"예산 소진 시까지"};
   if(/선착|선순/.test(n))return{check:false,label:"선착순",text:"선착순 접수"};
-  if(/상시/.test(n))return{check:false,label:"상시 접수",text:"상시 접수"};
+  if(/상시|수시/.test(n))return{check:false,label:"상시 접수",text:"상시 접수"};
+  if(/모집\s*(완료|마감)|충족/.test(n))return{check:false,label:"모집 차면 마감",text:"모집 인원이 차면 마감"};
   if(n)return{check:true,label:"기간 확인 필요",text:n};
   return{check:false,label:"마감일 없음",text:"마감일 표기 없음"};
 }

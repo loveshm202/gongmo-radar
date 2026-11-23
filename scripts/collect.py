@@ -134,7 +134,8 @@ def collect_bizinfo():
             added += 1
             if field in BIZ_NARROW_FIELDS and not BIZ_KEEP_WORDS.search(title):
                 continue
-            parts = re.findall(r"\d{4}-\d{2}-\d{2}", period)
+            # 2026-11-30 과 2026.11.30 두 표기를 모두 읽는다
+            parts = [norm_date(x) for x in re.findall(r"\d{4}[-.]\d{1,2}[-.]\d{1,2}", period)]
             row = {"t": title, "org": org, "s": parts[0] if parts else None,
                    "e": parts[1] if len(parts) > 1 else None, "field": field,
                    "src": "기업마당", "url": BIZ_VIEW + pid.group(1)}
