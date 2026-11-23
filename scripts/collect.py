@@ -95,9 +95,13 @@ def collect_egbiz():
         for pid, title, org, period in new:
             seen.add(pid)
             parts = re.findall(r"\d{4}-\d{2}-\d{2}", period)
-            out.append({"t": clean(title), "org": clean(org), "s": parts[0] if parts else None,
-                        "e": parts[1] if len(parts) > 1 else None, "src": "경기기업비서",
-                        "url": EGB_VIEW + pid, "reg": "경기"})
+            row = {"t": clean(title), "org": clean(org), "s": parts[0] if parts else None,
+                   "e": parts[1] if len(parts) > 1 else None, "src": "경기기업비서",
+                   "url": EGB_VIEW + pid, "reg": "경기"}
+            rest = clean(re.sub(r"\d{4}-\d{2}-\d{2}", "", period)).strip(" -~")
+            if len(parts) < 2 and rest:
+                row["note"] = rest
+            out.append(row)
         time.sleep(0.5)
     return out
 
@@ -106,6 +110,9 @@ def collect_egbiz():
 BIZ_LIST = "https://www.bizinfo.go.kr/sii/siia/selectSIIA200View.do?schEndAt=N&cpage="
 BIZ_VIEW = "https://www.bizinfo.go.kr/sii/siia/selectSIIA200Detail.do?pblancId="
 BIZ_FIELD = {"금융": "금융", "수출": "기업·판로", "내수": "기업·판로"}
+# 문화·소상공인 중심 사이트라 이 분야는 아래 낱말이 제목에 있을 때만 남긴다.
+BIZ_NARROW_FIELDS = {"기술", "수출", "인력"}
+BIZ_KEEP_WORDS = re.compile(r"소상공인|자영업|소공인|상권|전통시장|문화|예술|콘텐츠|관광|축제|공예|디자인|로컬|농식품|식품|카페|음식")
 
 
 def collect_bizinfo():
@@ -124,11 +131,18 @@ def collect_bizinfo():
             if len(tds) < 5:
                 continue
             field, title, period, _, org = tds[:5]
-            parts = re.findall(r"\d{4}-\d{2}-\d{2}", period)
-            out.append({"t": title, "org": org, "s": parts[0] if parts else None,
-                        "e": parts[1] if len(parts) > 1 else None, "field": field,
-                        "src": "기업마당", "url": BIZ_VIEW + pid.group(1)})
             added += 1
+            if field in BIZ_NARROW_FIELDS and not BIZ_KEEP_WORDS.search(title):
+                continue
+            parts = re.findall(r"\d{4}-\d{2}-\d{2}", period)
+            row = {"t": title, "org": org, "s": parts[0] if parts else None,
+                   "e": parts[1] if len(parts) > 1 else None, "field": field,
+                   "src": "기업마당", "url": BIZ_VIEW + pid.group(1)}
+            if not parts and period:
+                row["note"] = period  # 예: 예산 소진시까지, 상시 접수, 세부사업별 상이
+            if len(tds) > 5 and re.match(r"\d{4}-\d{2}-\d{2}$", tds[5]):
+                row["posted"] = tds[5]
+            out.append(row)
         if not added:
             break
         time.sleep(0.4)
