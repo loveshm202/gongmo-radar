@@ -135,10 +135,183 @@ def collect_bizinfo():
     return out
 
 
+# ---------- 해외 공모 (유럽·일본·미국, 한국인 지원 가능) ----------
+EUROPE = {
+    "AT": "오스트리아", "BE": "벨기에", "BG": "불가리아", "HR": "크로아티아", "CY": "키프로스", "CZ": "체코",
+    "DK": "덴마크", "EE": "에스토니아", "FI": "핀란드", "FR": "프랑스", "DE": "독일", "GR": "그리스",
+    "HU": "헝가리", "IS": "아이슬란드", "IE": "아일랜드", "IT": "이탈리아", "LV": "라트비아", "LT": "리투아니아",
+    "LU": "룩셈부르크", "MT": "몰타", "NL": "네덜란드", "NO": "노르웨이", "PL": "폴란드", "PT": "포르투갈",
+    "RO": "루마니아", "RS": "세르비아", "SK": "슬로바키아", "SI": "슬로베니아", "ES": "스페인", "SE": "스웨덴",
+    "CH": "스위스", "GB": "영국", "UK": "영국", "UA": "우크라이나", "TR": "튀르키예", "AL": "알바니아",
+    "BA": "보스니아", "ME": "몬테네그로", "MK": "북마케도니아", "MD": "몰도바", "GE": "조지아", "AM": "아르메니아",
+}
+COUNTRY_EN = {
+    "Austria": "AT", "Belgium": "BE", "Bulgaria": "BG", "Croatia": "HR", "Cyprus": "CY", "Czech Republic": "CZ",
+    "Czechia": "CZ", "Denmark": "DK", "Estonia": "EE", "Finland": "FI", "France": "FR", "Germany": "DE",
+    "Greece": "GR", "Hungary": "HU", "Iceland": "IS", "Ireland": "IE", "Italy": "IT", "Latvia": "LV",
+    "Lithuania": "LT", "Luxembourg": "LU", "Malta": "MT", "Netherlands": "NL", "Norway": "NO", "Poland": "PL",
+    "Portugal": "PT", "Romania": "RO", "Serbia": "RS", "Slovakia": "SK", "Slovenia": "SI", "Spain": "ES",
+    "Sweden": "SE", "Switzerland": "CH", "United Kingdom": "GB", "Ukraine": "UA", "Turkey": "TR",
+    "Japan": "JP", "United States of America": "US", "United States": "US", "USA": "US", "Europe": "EU",
+}
+
+
+def abroad(code):
+    """국가 코드 -> (권역, 국가 한글명). 대상 밖이면 None."""
+    if code == "JP":
+        return "일본", "일본"
+    if code == "US":
+        return "미국", "미국"
+    if code == "EU":
+        return "유럽", "유럽"
+    if code in EUROPE:
+        return "유럽", EUROPE[code]
+    return None
+
+
+OPEN_WORDS = re.compile(r"all countries|any countr|any nationalit|all nationalit|regardless of nationality|"
+                        r"international artists|worldwide|from around the world|open to all|korea|asia", re.I)
+CLOSED_WORDS = re.compile(r"(citizens?|nationals?|residents?|resident artists?) of|must (be|live|reside|work)[^.]{0,60}"
+                          r"\b(in|of)\b|based in|living in|legally[^.]{0,40}(EU|European Union|United States|US)|"
+                          r"eu passport|EU/EEA|green card|social security number|county", re.I)
+
+
+def open_to_korean(text):
+    """지원 자격 문장으로 한국인 지원 가능 여부를 어림한다. 모르면 True."""
+    if not text:
+        return True
+    if OPEN_WORDS.search(text):
+        return True
+    return not CLOSED_WORDS.search(text)
+
+
+OTM_BASE = "https://on-the-move.org"
+OTM_TYPE = {"Residencies": "레지던시", "Project Funding": "지원금", "Fellowships": "펠로십",
+            "Competitions & Awards": "공모전·상", "Presenting Work": "발표 기회", "Training": "교육",
+            "Meetings & Collaboration": "교류", "Jobs": "채용", "Surveys & Policy": "조사"}
+
+
+def collect_onthemove():
+    out, seen = [], set()
+    for page in range(0, 15):
+        s = fetch(f"{OTM_BASE}/news?page={page}")
+        cards = re.findall(r"<div class='list_title'>(.*?)class='list-link'", s, re.S)
+        new = 0
+        for c in cards:
+            href = re.search(r"href='(/news/[^']+)'", c)
+            if not href or href.group(1) in seen:
+                continue
+            seen.add(href.group(1))
+            new += 1
+            title = clean((re.search(r"block-title'>(.*?)</span>", c, re.S) or [None, ""])[1])
+            typ = clean((re.search(r"list_meta_news-type'>(.*?)</div>", c, re.S) or [None, ""])[1])
+            dl = re.search(r'datetime="(\d{4}-\d{2}-\d{2})', c)
+            if typ in ("Jobs", "Surveys & Policy"):
+                continue
+            # 상세 페이지: 대상 국가, 지원 대상, 원문 링크, 본문(자격 확인용)
+            try:
+                d = fetch(OTM_BASE + href.group(1))
+            except Exception:
+                continue
+            main = re.search(r"<main.*?</main>", d, re.S)
+            body = clean(main.group(0)) if main else ""
+            dest = re.search(r"Destination countries:(.*?)(?:The |This |[A-Z][a-z]+ [a-z])", body)
+            names = [n.strip() for n in re.split(r"\s{1,}(?=[A-Z])", dest.group(1).strip())] if dest else []
+            codes = []
+            for n in names:
+                for en, code in COUNTRY_EN.items():
+                    if en in n and code not in codes:
+                        codes.append(code)
+            if not codes:
+                m = re.search(r"\(([^()]+)\)\s*$", title)
+                if m:
+                    codes = [code for en, code in COUNTRY_EN.items() if en in m.group(1)]
+            places = [abroad(c) for c in codes]
+            places = [p for p in places if p]
+            if not places or not open_to_korean(body):
+                continue
+            more = re.search(r'href="(https?://[^"]+)"[^>]*>\s*More info', d)
+            opn = re.search(r"Open for:(.*?)Destination", body)
+            out.append({
+                "t": title, "org": title.split(":")[0].strip() if ":" in title else "On the Move", "s": None, "e": dl.group(1) if dl else None,
+                "cat": "해외", "reg": places[0][0], "nation": "·".join(dict.fromkeys(p[1] for p in places)),
+                "type": OTM_TYPE.get(typ, typ), "tgt": clean(opn.group(1)) if opn else "",
+                "src": "On the Move", "url": OTM_BASE + href.group(1),
+                "apply": html.unescape(more.group(1)) if more else None,
+            })
+            time.sleep(0.7)
+        if not new:
+            break
+        time.sleep(0.7)
+    return out
+
+
+AC_BASE = "https://www.artconnect.com"
+AC_TYPE = {"ART_RESIDENCY": "레지던시", "OPEN_CALL": "공모", "GRANT_OR_STIPEND": "지원금",
+           "AWARD_OR_PRICE": "공모전·상", "CALL_FOR_CURATORS": "큐레이터 공모",
+           "ARTIST_COMMISSION": "작품 의뢰", "EXHIBITION": "전시"}
+
+
+def ac_items(page_html):
+    chunks = re.findall(r'self\.__next_f\.push\(\[1,"(.*?)"\]\)</script>', page_html, re.S)
+    txt = "".join(json.loads('"' + c + '"') for c in chunks)
+    dec, items = json.JSONDecoder(), []
+    for m in re.finditer(r'\{"id":"[^"]+","profile":\{', txt):
+        try:
+            obj, _ = dec.raw_decode(txt, m.start())
+        except ValueError:
+            continue
+        if "deadline" in obj and "title" in obj:
+            items.append(obj)
+    return items
+
+
+def collect_artconnect():
+    out, seen = [], set()
+    for page in range(1, 60):
+        items = ac_items(fetch(f"{AC_BASE}/opportunities?page={page}"))
+        new = [it for it in items if it["id"] not in seen]
+        if not new:
+            break
+        for it in new:
+            seen.add(it["id"])
+            if it.get("type") not in AC_TYPE or it.get("isOnline"):
+                continue
+            r = it.get("restrictions") or {}
+            nat = r.get("nationality")
+            if nat and "KR" not in json.dumps(nat):
+                continue
+            locs = r.get("locations") or []
+            if locs and not any((l or {}).get("country") == "KR" for l in locs):
+                continue
+            other = r.get("other") or ""
+            if other.startswith("$"):
+                other = ""
+            if not open_to_korean(other):
+                continue
+            code = it.get("country") or ((it.get("locations") or [{}])[0] or {}).get("country") \
+                or (it.get("profile") or {}).get("country")
+            place = abroad(code)
+            if not place:
+                continue
+            prof = it.get("profile") or {}
+            org = prof.get("organizationName") or " ".join(
+                x for x in (prof.get("firstName"), prof.get("lastName")) if x) or "ArtConnect"
+            out.append({
+                "t": it["title"], "org": org, "s": None, "e": (it.get("deadline") or "")[:10] or None,
+                "cat": "해외", "reg": place[0], "nation": place[1], "type": AC_TYPE[it["type"]],
+                "tgt": "참가비 없음" if it.get("fee") == "FREE" else "참가비 있음",
+                "src": "ArtConnect", "url": f"{AC_BASE}/opportunity/{it['id']}",
+            })
+        time.sleep(1)
+    return out
+
+
 def main(path):
     now = dt.datetime.now(KST)
     data, notes = [], {}
-    for name, fn in (("문화포털", collect_culture), ("경기기업비서", collect_egbiz), ("기업마당", collect_bizinfo)):
+    for name, fn in (("문화포털", collect_culture), ("경기기업비서", collect_egbiz), ("기업마당", collect_bizinfo),
+                     ("On the Move", collect_onthemove), ("ArtConnect", collect_artconnect)):
         try:
             rows = fn()
             notes[name] = len(rows)

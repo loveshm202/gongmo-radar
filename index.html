@@ -110,7 +110,7 @@ footer a{color:var(--accent)}
   <button class="more" id="more" hidden>더 보기</button>
 
   <footer>
-    <p>출처: 문화포털 문화지원사업, 경기기업비서(경기도경제과학진흥원), 기업마당. 매일 9시·12시·15시·18시에 자동으로 다시 모읍니다. 신청 전에 원문 공고에서 자격과 기간을 꼭 확인하세요.</p>
+    <p>출처: 문화포털 문화지원사업, 경기기업비서(경기도경제과학진흥원), 기업마당, 해외 공모는 On the Move·ArtConnect(유럽·일본·미국, 국적·거주 제한이 있는 공고는 뺌). 매일 9시·12시·15시·18시에 자동으로 다시 모읍니다. 신청 전에 원문 공고에서 자격과 기간을 꼭 확인하세요.</p>
     <p>'상시'는 마감일 없이 상시 접수하거나 예산이 소진되면 끝나는 공고입니다.</p>
   </footer>
 </div>
@@ -149,8 +149,8 @@ function bizCat(t,field){
   return "기업·판로";
 }
 
-const REGIONS=[["전체",null],["경기",["경기"]],["서울",["서울"]],["인천",["인천"]],["강원",["강원"]],["충청",["충북","충남","대전","세종"]],["전라",["전북","전남","광주"]],["경상",["경북","경남","대구","부산","울산"]],["제주",["제주"]],["전국",["전국"]]];
-const CATS=["전체","문화예술","인문·출판","관광","소상공인","금융","기업·판로","체육"];
+const REGIONS=[["전체",null],["경기",["경기"]],["서울",["서울"]],["인천",["인천"]],["강원",["강원"]],["충청",["충북","충남","대전","세종"]],["전라",["전북","전남","광주"]],["경상",["경북","경남","대구","부산","울산"]],["제주",["제주"]],["전국",["전국"]],["유럽",["유럽"]],["일본",["일본"]],["미국",["미국"]]];
+const CATS=["전체","해외","문화예술","인문·출판","관광","소상공인","금융","기업·판로","체육"];
 const state={q:"",reg:"전체",cat:"전체",fav:false,closed:false,hideRental:true,limit:60};
 const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let favs=new Set(store.get("gr-favs3",[]));
@@ -159,7 +159,7 @@ const now=new Date();const TODAY=new Date(now.getFullYear(),now.getMonth(),now.g
 
 const parse=s=>{if(!s)return null;const[y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d)};
 const DAY=86400000;
-const isClosed=d=>d.e&&parse(d.e)<TODAY;
+const isClosed=d=>!!(d.e&&parse(d.e)<TODAY);
 function status(d){
   if(isClosed(d))return{cls:"closed",big:"마감",small:"종료"};
   const s=parse(d.s);
@@ -187,7 +187,7 @@ function filtered(){
     if(state.cat!=="전체"&&d.cat!==state.cat)return false;
     if(!state.closed&&isClosed(d))return false;
     if(state.hideRental&&d.rental&&!q.includes("대관"))return false;
-    if(q&&!(d.t+" "+d.org+" "+d.reg+" "+d.cat+" "+(d.tgt||"")).toLowerCase().includes(q))return false;
+    if(q&&!(d.t+" "+d.org+" "+d.reg+" "+d.cat+" "+(d.tgt||"")+" "+(d.nation||"")+" "+(d.type||"")).toLowerCase().includes(q))return false;
     return true}).sort((a,b)=>{const ca=isClosed(a),cb=isClosed(b);if(ca!==cb)return ca?1:-1;
       const ea=a.e?parse(a.e):null,eb=b.e?parse(b.e):null;if(!ea&&!eb)return 0;if(!ea)return 1;if(!eb)return -1;return ca?eb-ea:ea-eb});
 }
@@ -201,9 +201,9 @@ function render(){
     return `<li class="item">
       <div class="dday ${st.cls}">${st.big}<small>${st.small}</small></div>
       <div class="body">
-        <div class="meta"><span class="tag">${d.cat}</span><span class="tag reg">${d.reg}</span>${d.type?`<span class="tag reg">${esc(d.type.split("/")[0])}</span>`:""}</div>
+        <div class="meta"><span class="tag">${d.cat}</span><span class="tag reg">${esc(d.nation||d.reg)}</span>${d.type?`<span class="tag reg">${esc(d.type.split("/")[0])}</span>`:""}</div>
         <h2 class="title"><a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.t)}</a></h2>
-        <div class="info"><span>${esc(d.org)}</span><span class="per">${per}</span>${d.tgt?`<span>대상 ${esc(d.tgt)}</span>`:""}<span>출처 ${esc(d.src)}</span></div>
+        <div class="info"><span>${esc(d.org)}</span><span class="per">${per}</span>${d.tgt?`<span>${d.cat==="해외"?"":"대상 "}${esc(d.tgt)}</span>`:""}<span>출처 ${esc(d.src)}</span></div>
       </div>
       <button class="star" data-id="${d.id}" aria-pressed="${on}" aria-label="관심 공고 ${on?"해제":"추가"}">${on?"★":"☆"}</button>
     </li>`}).join("");
@@ -211,7 +211,7 @@ function render(){
 }
 function stats(){
   const open=DATA.filter(d=>!isClosed(d));const by=k=>open.filter(d=>d.cat===k).length;
-  document.getElementById("stats").innerHTML=`접수 중 <b>${open.length}</b>건 · 경기 <b>${open.filter(d=>d.reg==="경기").length}</b> · 문화예술 <b>${by("문화예술")}</b> · 소상공인 <b>${by("소상공인")}</b> · 관광 <b>${by("관광")}</b>`;
+  document.getElementById("stats").innerHTML=`접수 중 <b>${open.length}</b>건 · 경기 <b>${open.filter(d=>d.reg==="경기").length}</b> · 문화예술 <b>${by("문화예술")}</b> · 소상공인 <b>${by("소상공인")}</b> · 관광 <b>${by("관광")}</b> · 해외 <b>${by("해외")}</b>`;
 }
 function build(items){
   const norm=s=>s.replace(/\[[^\]]*\]/g,"").replace(/[^가-힣a-zA-Z0-9]/g,"").slice(0,24);
